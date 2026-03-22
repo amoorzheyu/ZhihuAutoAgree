@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         知乎自动点赞和喜欢
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  在知乎个人/机构回答界面自动批量点赞和喜欢。支持可调间隔、一键开始/停止，自动滚动加载并处理到底部停止。
+// @version      1.3
+// @description  在知乎个人/机构回答界面自动批量赞同和喜欢。支持可调间隔、一键开始/停止，自动滚动加载并处理到底部停止。
 // @author       amoorzheyu
 // @match        https://www.zhihu.com/people/*/answers
 // @match        https://www.zhihu.com/people/*/posts
@@ -86,23 +86,135 @@ cursor:pointer;
 
 
     /* ------------------------------
-       查找未点赞
+       赞同：用类名判断（is-active = 已赞同）
+       用向上三角图标区分「赞同」与「反对」两个 VoteButton
     --------------------------------*/
+
+    function findVoteUpButtons() {
+
+        return Array.from(document.querySelectorAll("button.VoteButton")).filter(
+            b => b.querySelector(".VoteButton-TriangleUp, svg.Zi--TriangleUp")
+        );
+
+    }
+
+    /** 已赞同：按钮带 is-active；未赞同：无 is-active */
+    function isVoteLiked(btn) {
+
+        return btn.classList.contains("is-active");
+
+    }
+
+    /**
+     * 只打一行摘要，避免页面上几十个赞同按钮时每次点击都刷屏。
+     * @param {HTMLButtonElement} [targetBtn] 本次即将点击的按钮，会多打一行说明
+     */
+    function scanAndLogVoteButtons(targetBtn) {
+
+        const list = findVoteUpButtons();
+
+        if (!list.length) {
+
+            console.log("[赞同] 扫描：当前页面未找到任何「赞同」按钮（VoteButton+向上三角）");
+
+            return;
+
+        }
+
+        const likedCount = list.filter(isVoteLiked).length;
+
+        const unlikedCount = list.length - likedCount;
+
+        console.log(
+            `[赞同] 扫描摘要：共 ${list.length} 个赞同按钮，已赞同 ${likedCount}，未赞同 ${unlikedCount}`
+        );
+
+        if (targetBtn && list.includes(targetBtn)) {
+
+            const idx = list.indexOf(targetBtn);
+
+            const label = (targetBtn.getAttribute("aria-label") || "").trim();
+
+            const activeCls = targetBtn.classList.contains("is-active")
+                ? "含 is-active"
+                : "无 is-active";
+
+            console.log(
+                `[赞同] 本次点击：第 ${idx + 1} 个（${activeCls}，aria-label：${label || "无"}）`
+            );
+
+        }
+
+    }
 
     function findUnliked() {
 
-        return Array.from(
-            document.querySelectorAll(
-                'button.VoteButton[aria-label="赞同"]'
-            )
-        ).filter(b => !b.disabled);
+        return findVoteUpButtons().filter(
+            b => !b.classList.contains("is-active") && !b.disabled
+        );
 
     }
 
 
     /* ------------------------------
-       查找未喜欢
+       喜欢：扫描并打印状态（已喜欢 / 未喜欢）
     --------------------------------*/
+
+    function isFavoriteLiked(btn) {
+
+        const label = (btn.getAttribute("aria-label") || "").trim();
+
+        return label === "已喜欢" || label === "取消喜欢";
+
+    }
+
+    function findFavoriteButtons() {
+
+        return Array.from(
+            document.querySelectorAll("button.ContentItem-action")
+        ).filter(b => {
+            const l = (b.getAttribute("aria-label") || "").trim();
+            return (
+                l === "喜欢" ||
+                l === "已喜欢" ||
+                l === "取消喜欢"
+            );
+        });
+
+    }
+
+    /** 一行摘要 + 可选本次点击目标，避免刷屏 */
+    function scanAndLogFavoriteButtons(targetBtn) {
+
+        const list = findFavoriteButtons();
+
+        if (!list.length) {
+
+            console.log("[喜欢] 扫描：当前页面未找到喜欢相关按钮");
+
+            return;
+
+        }
+
+        const likedCount = list.filter(isFavoriteLiked).length;
+
+        const unlikedCount = list.length - likedCount;
+
+        console.log(
+            `[喜欢] 扫描摘要：共 ${list.length} 个喜欢按钮，已喜欢 ${likedCount}，未喜欢 ${unlikedCount}`
+        );
+
+        if (targetBtn && list.includes(targetBtn)) {
+
+            const idx = list.indexOf(targetBtn);
+
+            const label = (targetBtn.getAttribute("aria-label") || "").trim();
+
+            console.log(`[喜欢] 本次点击：第 ${idx + 1} 个（aria-label：${label || "无"}）`);
+
+        }
+
+    }
 
     function findUnfavorited() {
 
@@ -158,7 +270,9 @@ cursor:pointer;
 
         if (likeBtns.length) {
 
-            console.log("点赞");
+            scanAndLogVoteButtons(likeBtns[0]);
+
+            console.log("[赞同] 成功执行赞同（已点击赞同按钮）");
 
             likeBtns[0].click();
 
@@ -169,7 +283,9 @@ cursor:pointer;
 
         if (favBtns.length) {
 
-            console.log("喜欢");
+            scanAndLogFavoriteButtons(favBtns[0]);
+
+            console.log("[喜欢] 成功执行喜欢");
 
             favBtns[0].click();
 
