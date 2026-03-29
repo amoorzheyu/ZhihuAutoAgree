@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎自动点赞和喜欢
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  在知乎个人/机构回答界面自动批量赞同和喜欢。支持可调间隔、一键开始/停止，自动滚动加载并处理到底部停止。
 // @author       amoorzheyu
 // @match        https://www.zhihu.com/people/*/answers
@@ -19,6 +19,14 @@
     let timer = null;
 
     let interval = parseInt(localStorage.getItem("zhihu-auto-interval") || "2000");
+
+    let clickPriority = localStorage.getItem("zhihu-auto-priority") || "voteFirst";
+
+    if (clickPriority !== "voteFirst" && clickPriority !== "favoriteFirst") {
+
+        clickPriority = "voteFirst";
+
+    }
 
     // 滚动距离（比之前大）
     const scrollDistance = 5000;
@@ -42,8 +50,12 @@ padding:15px;
 border-radius:8px;
 box-shadow:0 4px 12px rgba(0,0,0,.2);
 font-size:14px;
-width:200px;
+width:220px;
 `;
+
+        const voteChecked = clickPriority === "voteFirst" ? " checked" : "";
+
+        const favChecked = clickPriority === "favoriteFirst" ? " checked" : "";
 
         panel.innerHTML = `
 
@@ -58,6 +70,18 @@ type="number"
 value="${interval}"
 style="width:100%;margin:5px 0 10px 0;padding:5px"
 />
+
+<div style="font-size:12px;margin-bottom:6px;">优先点击</div>
+
+<label style="display:block;font-size:12px;cursor:pointer;margin:4px 0;">
+<input type="radio" name="zhihu_priority" value="voteFirst"${voteChecked}/>
+优先赞同
+</label>
+
+<label style="display:block;font-size:12px;cursor:pointer;margin:4px 0 10px 0;">
+<input type="radio" name="zhihu_priority" value="favoriteFirst"${favChecked}/>
+优先喜欢
+</label>
 
 <button id="zhihu_toggle"
 style="
@@ -79,6 +103,22 @@ cursor:pointer;
             interval = parseInt(e.target.value);
             localStorage.setItem("zhihu-auto-interval", interval);
         };
+
+        panel.querySelectorAll('input[name="zhihu_priority"]').forEach(radio => {
+
+            radio.onchange = () => {
+
+                if (radio.checked) {
+
+                    clickPriority = radio.value;
+
+                    localStorage.setItem("zhihu-auto-priority", clickPriority);
+
+                }
+
+            };
+
+        });
 
         document.getElementById("zhihu_toggle").onclick = toggle;
 
@@ -262,34 +302,62 @@ cursor:pointer;
        主逻辑
     --------------------------------*/
 
+    function tryVoteOnce() {
+
+        const likeBtns = findUnliked();
+
+        if (!likeBtns.length) {
+
+            return false;
+
+        }
+
+        scanAndLogVoteButtons(likeBtns[0]);
+
+        console.log("[赞同] 成功执行赞同（已点击赞同按钮）");
+
+        likeBtns[0].click();
+
+        return true;
+
+    }
+
+    function tryFavoriteOnce() {
+
+        const favBtns = findUnfavorited();
+
+        if (!favBtns.length) {
+
+            return false;
+
+        }
+
+        scanAndLogFavoriteButtons(favBtns[0]);
+
+        console.log("[喜欢] 成功执行喜欢");
+
+        favBtns[0].click();
+
+        return true;
+
+    }
+
     function run() {
 
         if (!running) return;
 
-        let likeBtns = findUnliked();
+        if (clickPriority === "voteFirst") {
 
-        if (likeBtns.length) {
+            if (tryVoteOnce()) return;
 
-            scanAndLogVoteButtons(likeBtns[0]);
+            if (tryFavoriteOnce()) return;
 
-            console.log("[赞同] 成功执行赞同（已点击赞同按钮）");
+        } else {
 
-            likeBtns[0].click();
+            if (tryFavoriteOnce()) return;
 
-            return;
-        }
+            if (tryVoteOnce()) return;
 
-        let favBtns = findUnfavorited();
-
-        if (favBtns.length) {
-
-            scanAndLogFavoriteButtons(favBtns[0]);
-
-            console.log("[喜欢] 成功执行喜欢");
-
-            favBtns[0].click();
-
-            return;
         }
 
         /* 没找到按钮 */
